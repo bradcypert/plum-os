@@ -235,4 +235,3 @@ does not establish an unrestricted stdlib or sustained allocator support.
 - [Pinned boot inputs](../README.md#pinned-boot-inputs)
 - [Kernel hook implementation](../support/README.md)
 - [First guided session](first-boot.md)
-
