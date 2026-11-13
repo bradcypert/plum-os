@@ -1,0 +1,46 @@
+name: Plum-OS boot
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  boot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - name: read pinned compiler revision
+        id: compiler
+        run: python3 -c 'import json,os; pin=json.load(open("plum-toolchain.json")); open(os.environ["GITHUB_OUTPUT"],"a").write("revision="+pin["revision"]+"\n")'
+      - uses: actions/checkout@v5
+        with:
+          repository: bradcypert/plum
+          ref: ${{ steps.compiler.outputs.revision }}
+          path: .toolchain/plum
+      - name: compiler and BIOS image tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang lld binutils curl xorriso qemu-system-x86
+      - name: build the pinned Plum compiler from source
+        working-directory: .toolchain/plum
+        run: |
+          ./bootstrap/from-seed -o /tmp/plum-os-seed
+          /tmp/plum-os-seed build bootstrap/self_host -o /tmp/plum-os-compiler
+      - name: support hooks and memory checks
+        run: python3 tests/kernel-hooks-check.py /tmp/plum-os-compiler
+      - name: build kernel and observe the QEMU halt
+        run: |
+          python3 build.py --plum /tmp/plum-os-compiler --release
+          python3 smoke.py
+          cat build/toolchain.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: plum-os-boot
+          path: |
+            build/kernel.elf
+            build/toolchain.json
+            build/serial.log
+            build/halt-registers.txt
+          if-no-files-found: warn
