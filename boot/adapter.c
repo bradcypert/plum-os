@@ -1,3 +1,4 @@
+#include <stddef.h>
 #include <stdint.h>
 #include "limine.h"
 #include "../support/kernel.h"
@@ -28,6 +29,25 @@ static volatile LIMINE_REQUESTS_END_MARKER
  * reinterpret these addresses as physical pointers. The demo owns no pages. */
 volatile uint64_t plum_boot_hhdm_offset;
 const struct limine_memmap_response *volatile plum_boot_memory_map;
+
+struct boot_snapshot {
+    uint64_t hhdm_offset;
+    uint64_t memory_map_entries;
+};
+
+_Static_assert(sizeof(struct boot_snapshot) == 16, "BootSnapshot size");
+_Static_assert(_Alignof(struct boot_snapshot) == 8, "BootSnapshot alignment");
+_Static_assert(offsetof(struct boot_snapshot, memory_map_entries) == 8, "BootSnapshot entry count offset");
+
+extern int boot_snapshot_matches(const struct boot_snapshot *snapshot,
+                                 uint64_t hhdm_offset, uint64_t memory_map_entries);
+
+int plum_boot_check_snapshot(void) {
+    uint64_t offset = plum_boot_hhdm_offset;
+    uint64_t entries = plum_boot_memory_map->entry_count;
+    const struct boot_snapshot snapshot = { .hhdm_offset = offset, .memory_map_entries = entries };
+    return boot_snapshot_matches(&snapshot, offset, entries);
+}
 
 #define BOOT_FAIL(message) plum_kernel_panic((const uint8_t *)(message), sizeof(message) - 1)
 

@@ -1,14 +1,29 @@
-// These scalar externs use the existing C ABI; no Plum pointer API is needed.
+extern "C" struct BootSnapshot {
+    hhdm_offset: U64,
+    memory_map_entries: U64,
+}
+
 extern "C" {
     fn plum_x86_serial_write(bytes: CStr, length: Int) -> Unit;
     fn plum_x86_interrupts_disable() -> Unit;
     fn plum_x86_interrupts_enabled() -> Bool;
     fn plum_x86_halt() -> Unit;
+    fn plum_boot_check_snapshot() -> Bool;
+}
+
+extern "C" let boot_snapshot_matches
+    (snapshot: RawPtr[BootSnapshot])
+    (hhdm_offset: U64)
+    (memory_map_entries: U64): Bool
+= unsafe {
+    snapshot.field_ptr("hhdm_offset").load() == hhdm_offset
+        && snapshot.field_ptr("memory_map_entries").load() == memory_map_entries
 }
 
 let main (): Unit = unsafe {
     plum_x86_interrupts_disable();
     if plum_x86_interrupts_enabled() { panic_raw("interrupts must remain disabled") };
+    if !plum_boot_check_snapshot() { panic_raw("boot snapshot round trip failed") };
     let marker = "PLUM_KERNEL_OK\n";
     plum_x86_serial_write(marker.as_cstr(), 15);
     plum_x86_halt();

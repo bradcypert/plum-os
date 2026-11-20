@@ -36,7 +36,7 @@ Build that compiler separately (first-time setup):
 
 ```sh
 git clone https://github.com/bradcypert/plum.git .toolchain/plum
-git -C .toolchain/plum checkout 0efc86228d04ae58a152f5c4628984f21ab9a18e
+git -C .toolchain/plum checkout 79488cb14f28751811403ba9dfe154d1f3ffdfac
 (cd .toolchain/plum && ./bootstrap/from-seed -o /tmp/plum-os-seed && /tmp/plum-os-seed build bootstrap/self_host -o /tmp/plum-os-compiler)
 python3 build.py --plum /tmp/plum-os-compiler
 python3 smoke.py
@@ -100,13 +100,20 @@ release. These are tested versions, not minimum version claims.
 | `boot/adapter.c` | Negotiate Limine base revision 3; require HHDM, a nonempty memory map and four-level paging; retain borrowed boot data; initialize hooks before the generated entry |
 | `boot/kernel.ld` | Higher-half ELF64 ET_EXEC at `0xffffffff80000000`, `_start` entry, page-aligned RX/R/RW regions, writable retained request records, mapped BSS and debug sections |
 | `boot/hardware.c` | C ABI serial write, interrupt disable/status and non-returning halt helpers |
-| `main.plum` | Check interrupts remain disabled, emit the fixed serial marker, halt |
+| `main.plum` | Check interrupts remain disabled, verify the boot snapshot round trip, emit the serial marker, halt |
 
 The adapter retains the HHDM offset returned by Limine and the borrowed memory
 map. It does not guess address offsets, reclaim boot memory, change CR3/GDT,
 start secondary CPUs, or enable interrupts. Limine zero-fills BSS. Failures use
 `plum_kernel_panic` before heap initialization, sharing the reference UART
 initializer so later initialization cannot clear pending adapter output.
+
+During `main`, `plum_boot_check_snapshot` copies the HHDM offset and memory-map
+entry count into a C stack record. It calls the Plum export
+`boot_snapshot_matches` with the borrowed record and the original scalar
+values. Plum reads the fields through `RawPtr[BootSnapshot]` and checks them
+before printing the boot marker. The record is live through the synchronous
+call. [C-callable export contract](https://github.com/bradcypert/plum/blob/79488cb14f28751811403ba9dfe154d1f3ffdfac/docs/c-callable-exports.md)
 
 The helper signatures match the current emitter:
 
@@ -126,7 +133,7 @@ a kernel-owned IDT and exception handling, which this demo does not supply.
 The [early kernel support](support/README.md) uses a
 1 MiB bump arena with no-op frees. This is a bounded boot demo, not a sustained
 allocator or a general OS runtime. See the
-[compiler target/entry contract](https://github.com/bradcypert/plum/blob/0efc86228d04ae58a152f5c4628984f21ab9a18e/docs/freestanding-x86_64.md).
+[compiler target/entry contract](https://github.com/bradcypert/plum/blob/79488cb14f28751811403ba9dfe154d1f3ffdfac/docs/freestanding-x86_64.md).
 
 Protocol/configuration references for the selected release:
 [Limine protocol](https://github.com/Limine-Bootloader/Limine/blob/v8.7.0/PROTOCOL.md),

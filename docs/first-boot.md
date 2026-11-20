@@ -14,7 +14,9 @@ Read these small pieces in order:
 4. `boot/adapter.c` checks bootloader responses, initializes our runtime hooks and
    calls the compiler-generated `plum_kernel_start`.
 5. The generated entry initializes Plum globals and invokes `main.plum`.
-6. `boot/hardware.c` forwards serial output and halt requests to `support/`.
+6. `main.plum` asks the adapter to send a boot snapshot back through the
+   `boot_snapshot_matches` export while the Plum runtime is active.
+7. `boot/hardware.c` forwards serial output and halt requests to `support/`.
 
 The bootloader prepares the machine, the adapter satisfies the compiler's entry
 contract, and Plum runs the kernel behavior. Those responsibilities live in
