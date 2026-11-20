@@ -10,7 +10,7 @@ The compiler supplies only the hook ABI; it does not embed or select these files
 
 A boot adapter and bootable BIOS image are supplied by the
 [Plum-OS boot kernel](../README.md).
-See the [compiler target/entry contract](https://github.com/bradcypert/plum/blob/0efc86228d04ae58a152f5c4628984f21ab9a18e/docs/freestanding-x86_64.md).
+See the [compiler target/entry contract](https://github.com/bradcypert/plum/blob/79488cb14f28751811403ba9dfe154d1f3ffdfac/docs/freestanding-x86_64.md).
 
 ## Initialization and sources
 

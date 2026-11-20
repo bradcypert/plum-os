@@ -206,7 +206,8 @@ The ordered startup sequence is:
    idempotent, so output queued through the hooks in step 3 is not cleared;
    failures use serial/halt.
 5. Call `plum_kernel_start`, which initializes globals and invokes Plum `main`.
-6. Plum writes `PLUM_KERNEL_OK\n`; returning from `main` reaches the halt hook.
+6. Plum checks the adapter's boot snapshot through a synchronous C-to-Plum call.
+7. Plum writes `PLUM_KERNEL_OK\n` and halts through the platform helper.
 
 The example's reference invocation, after building `kernel.iso`, is:
 
