@@ -29,11 +29,6 @@ static volatile struct limine_framebuffer_request framebuffer_request = {
 __attribute__((used, section(".limine_requests_end")))
 static volatile LIMINE_REQUESTS_END_MARKER
 
-/* Borrowed boot data, reserved for later kernel facilities. Do not reclaim or
- * reinterpret these addresses as physical pointers. The demo owns no pages. */
-volatile uint64_t plum_boot_hhdm_offset;
-const struct limine_memmap_response *volatile plum_boot_memory_map;
-
 struct boot_snapshot {
     uint64_t hhdm_offset;
     uint64_t memory_map_entries;
@@ -47,8 +42,8 @@ extern int boot_snapshot_matches(const struct boot_snapshot *snapshot,
                                  uint64_t hhdm_offset, uint64_t memory_map_entries);
 
 int plum_boot_check_snapshot(void) {
-    uint64_t offset = plum_boot_hhdm_offset;
-    uint64_t entries = plum_boot_memory_map->entry_count;
+    uint64_t offset = hhdm_request.response->offset;
+    uint64_t entries = memmap_request.response->entry_count;
     const struct boot_snapshot snapshot = { .hhdm_offset = offset, .memory_map_entries = entries };
     return boot_snapshot_matches(&snapshot, offset, entries);
 }
@@ -70,6 +65,16 @@ const uint8_t *plum_boot_framebuffer(void) {
     return (const uint8_t *)response->framebuffers[0];
 }
 
+_Static_assert(offsetof(struct limine_memmap_response, entry_count) == 8 &&
+               offsetof(struct limine_memmap_response, entries) == 16 &&
+               offsetof(struct limine_memmap_entry, base) == 0 &&
+               offsetof(struct limine_memmap_entry, length) == 8 &&
+               sizeof(struct limine_memmap_entry) == 24, "Limine memory map layout");
+
+const uint8_t *plum_boot_memory_map(void) {
+    return (const uint8_t *)memmap_request.response;
+}
+
 #define BOOT_FAIL(message) plum_kernel_panic((const uint8_t *)(message), sizeof(message) - 1)
 
 _Noreturn void plum_boot_enter(void) {
@@ -77,18 +82,11 @@ _Noreturn void plum_boot_enter(void) {
         LIMINE_LOADED_BASE_REVISION != 3) {
         BOOT_FAIL("unsupported Limine base revision");
     }
-    struct limine_hhdm_response *hhdm = hhdm_request.response;
-    struct limine_memmap_response *map = memmap_request.response;
     struct limine_paging_mode_response *paging = paging_request.response;
-    if (!hhdm || !map || !paging) BOOT_FAIL("missing required Limine response");
-    if (paging->mode != LIMINE_PAGING_MODE_X86_64_4LVL) BOOT_FAIL("expected four-level paging");
-    if (!map->entry_count || !map->entries) BOOT_FAIL("empty Limine memory map");
-    for (uint64_t i = 0; i < map->entry_count; ++i) {
-        const struct limine_memmap_entry *entry = map->entries[i];
-        if (!entry || entry->length > UINT64_MAX - entry->base) BOOT_FAIL("invalid Limine memory region");
+    if (!hhdm_request.response || !memmap_request.response || !paging) {
+        BOOT_FAIL("missing required Limine response");
     }
-    plum_boot_hhdm_offset = hhdm->offset;
-    plum_boot_memory_map = map;
+    if (paging->mode != LIMINE_PAGING_MODE_X86_64_4LVL) BOOT_FAIL("expected four-level paging");
     /* Any early failure uses the same serial initializer; never reset COM1. */
     plum_kernel_runtime_init();
     plum_kernel_start();
