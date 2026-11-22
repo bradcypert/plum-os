@@ -75,6 +75,9 @@ kernel. The adapter keeps a small descriptor for a supported 32-bit RGB
 framebuffer. It records the already-mapped pixel address, dimensions, row
 stride in bytes, and the packed green color. Plum reads that descriptor
 through `RawPtr[BootFramebuffer]` and paints a 160×80 rectangle at (48, 32).
+It centers the text PLUM OS inside the rectangle using a small bitmap font.
+Each letter has seven rows of five bits. A set bit paints a 3×3 black square
+and a clear bit leaves the background visible.
 Boot continues over serial when a supported framebuffer is unavailable.
 
 The interactive command above shows the rectangle in the QEMU window. To

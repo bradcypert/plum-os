@@ -29,25 +29,92 @@ extern "C" let boot_snapshot_matches
         && snapshot.field_ptr("memory_map_entries").load() == memory_map_entries
 }
 
-let draw_boot_rectangle (): Unit = unsafe {
+let glyph_width: Int = 5
+
+let glyph_height: Int = 7
+
+// Each row uses five bits, with the highest bit at the left edge.
+let glyph_rows (letter: Int): Array[Int] = match letter {
+    // L
+    76 => [16, 16, 16, 16, 16, 16, 31],
+    // M
+    77 => [17, 27, 21, 21, 17, 17, 17],
+    // O
+    79 => [14, 17, 17, 17, 17, 17, 14],
+    // P. The first row, 30, is 11110 in binary.
+    80 => [30, 17, 17, 30, 16, 16, 16],
+    // S
+    83 => [15, 16, 16, 14, 1, 1, 30],
+    // U
+    85 => [17, 17, 17, 17, 17, 17, 14],
+    // The space uses the same advance with no pixels.
+    _ => [],
+}
+
+let fill_rectangle
+    (pixels: RawPtr[U32])
+    (pitch: Int)
+    (x: Int)
+    (y: Int)
+    (width: Int)
+    (height: Int)
+    (color: U32): Unit
+= unsafe {
+    for row in y..(y + height) {
+        let row_offset = row * pitch;
+        for column in x..(x + width) {
+            pixels.offset_bytes(row_offset + column * 4).store_volatile(color);
+        }
+    }
+}
+
+let draw_boot_label
+    (pixels: RawPtr[U32])
+    (pitch: Int)
+    (letters: Array[Int])
+    (x: Int)
+    (y: Int)
+    (scale: Int): Unit
+= {
+    for letter_index in 0..letters.len() {
+        let rows = glyph_rows(letters[letter_index]);
+        let glyph_x = x + letter_index * (glyph_width + 1) * scale;
+        for row in 0..rows.len() {
+            let row_bits = rows[row];
+            for column in 0..glyph_width {
+                let mask = 1 << (glyph_width - 1 - column);
+                if (row_bits & mask) != 0 {
+                    let left = glyph_x + column * scale;
+                    let top = y + row * scale;
+                    fill_rectangle(pixels, pitch, left, top, scale, scale, 0);
+                }
+            }
+        }
+    }
+}
+
+let draw_boot_screen (): Unit = unsafe {
     let framebuffer = plum_boot_framebuffer();
     if !framebuffer.is_null() {
         let x = 48;
         let y = 32;
-        let right = x + 160;
-        let bottom = y + 80;
+        let rectangle_width = 160;
+        let rectangle_height = 80;
         let width = framebuffer.field_ptr("width").load();
         let height = framebuffer.field_ptr("height").load();
-        if right <= width && bottom <= height {
+        if x + rectangle_width <= width && y + rectangle_height <= height {
             let pixels = RawPtr.from_address[U32](framebuffer.field_ptr("address").load());
             let pitch = framebuffer.field_ptr("pitch").load();
             let green = framebuffer.field_ptr("green").load();
-            for row in y..bottom {
-                let row_offset = row * pitch;
-                for column in x..right {
-                    pixels.offset_bytes(row_offset + column * 4).store_volatile(green);
-                }
-            }
+            fill_rectangle(pixels, pitch, x, y, rectangle_width, rectangle_height, green);
+
+            let letters = "PLUM OS".as_bytes().to_array();
+            let scale = 3;
+            let label_width = (letters.len() * (glyph_width + 1) - 1) * scale;
+            let label_height = glyph_height * scale;
+            let label_x = x + (rectangle_width - label_width) / 2;
+            let label_y = y + (rectangle_height - label_height) / 2;
+            draw_boot_label(pixels, pitch, letters, label_x, label_y, scale);
         }
     }
 }
@@ -56,7 +123,7 @@ let main (): Unit = unsafe {
     plum_x86_interrupts_disable();
     if plum_x86_interrupts_enabled() { panic_raw("interrupts must remain disabled") };
     if !plum_boot_check_snapshot() { panic_raw("boot snapshot round trip failed") };
-    draw_boot_rectangle();
+    draw_boot_screen();
     let marker = "PLUM_KERNEL_OK\n";
     plum_x86_serial_write(marker.as_cstr(), 15);
     plum_x86_halt();
