@@ -54,7 +54,7 @@ To run interactively instead of the bounded smoke check:
 ```sh
 qemu-system-x86_64 -machine pc -accel tcg -cpu qemu64 -smp 1 -m 128M \
   -cdrom build/kernel.iso -boot d \
-  -display none -serial stdio -monitor none -no-reboot -no-shutdown
+  -display gtk -serial stdio -monitor none -no-reboot -no-shutdown
 ```
 
 The expected serial bytes are exactly `PLUM_KERNEL_OK\n`. Normal halt keeps
@@ -67,6 +67,22 @@ inside `plum_kernel_halt`, then terminates QEMU. A timeout or a marker without
 the expected halt fails. It saves `serial.log` and `halt-registers.txt` and adds
 the actual QEMU version to `toolchain.json`. Broader OS panic/allocation fixtures and GDB checks are tracked in this
 repository; compiler-only code-generation audits remain in Plum.
+
+## Draw on the boot framebuffer
+
+Limine fills the framebuffer request in the C adapter before starting the
+kernel. The adapter keeps a small descriptor for a supported 32-bit RGB
+framebuffer. It records the already-mapped pixel address, dimensions, row
+stride in bytes, and the packed green color. Plum reads that descriptor
+through `RawPtr[BootFramebuffer]` and paints a 160×80 rectangle at (48, 32).
+Boot continues over serial when a supported framebuffer is unavailable.
+
+The interactive command above shows the rectangle in the QEMU window. To
+capture the same screen with the bounded smoke check, run
+
+```sh
+python3 smoke.py --screenshot build/screen.png
+```
 
 ## Pinned boot inputs
 

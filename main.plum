@@ -3,12 +3,21 @@ extern "C" struct BootSnapshot {
     memory_map_entries: U64,
 }
 
+extern "C" struct BootFramebuffer {
+    address: U64,
+    width: Int,
+    height: Int,
+    pitch: Int,
+    green: U32,
+}
+
 extern "C" {
     fn plum_x86_serial_write(bytes: CStr, length: Int) -> Unit;
     fn plum_x86_interrupts_disable() -> Unit;
     fn plum_x86_interrupts_enabled() -> Bool;
     fn plum_x86_halt() -> Unit;
     fn plum_boot_check_snapshot() -> Bool;
+    fn plum_boot_framebuffer() -> RawPtr[BootFramebuffer];
 }
 
 extern "C" let boot_snapshot_matches
@@ -20,10 +29,34 @@ extern "C" let boot_snapshot_matches
         && snapshot.field_ptr("memory_map_entries").load() == memory_map_entries
 }
 
+let draw_boot_rectangle (): Unit = unsafe {
+    let framebuffer = plum_boot_framebuffer();
+    if !framebuffer.is_null() {
+        let x = 48;
+        let y = 32;
+        let right = x + 160;
+        let bottom = y + 80;
+        let width = framebuffer.field_ptr("width").load();
+        let height = framebuffer.field_ptr("height").load();
+        if right <= width && bottom <= height {
+            let pixels = RawPtr.from_address[U32](framebuffer.field_ptr("address").load());
+            let pitch = framebuffer.field_ptr("pitch").load();
+            let green = framebuffer.field_ptr("green").load();
+            for row in y..bottom {
+                let row_offset = row * pitch;
+                for column in x..right {
+                    pixels.offset_bytes(row_offset + column * 4).store_volatile(green);
+                }
+            }
+        }
+    }
+}
+
 let main (): Unit = unsafe {
     plum_x86_interrupts_disable();
     if plum_x86_interrupts_enabled() { panic_raw("interrupts must remain disabled") };
     if !plum_boot_check_snapshot() { panic_raw("boot snapshot round trip failed") };
+    draw_boot_rectangle();
     let marker = "PLUM_KERNEL_OK\n";
     plum_x86_serial_write(marker.as_cstr(), 15);
     plum_x86_halt();

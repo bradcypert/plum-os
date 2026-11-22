@@ -17,6 +17,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', type=Path, default=HERE / 'build')
     parser.add_argument('--timeout', type=float, default=20)
+    parser.add_argument('--screenshot', type=Path, help='save the screen as PNG at the expected halt')
     args = parser.parse_args()
     if args.timeout <= 0:
         parser.error('--timeout must be positive')
@@ -85,6 +86,8 @@ def main():
                     raise RuntimeError('QEMU exited unexpectedly')
                 (out / 'serial.log').write_bytes(data)
                 (out / 'halt-registers.txt').write_text(registers)
+                if args.screenshot:
+                    execute('screendump', {'filename': str(args.screenshot.resolve()), 'format': 'png'})
                 manifest = json.loads((out / 'toolchain.json').read_text())
                 manifest['qemu-system-x86_64'] = version
                 manifest['qemu_machine'] = 'pc, tcg, qemu64, smp=1, memory=128M, BIOS ISO'
