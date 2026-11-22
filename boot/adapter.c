@@ -53,42 +53,21 @@ int plum_boot_check_snapshot(void) {
     return boot_snapshot_matches(&snapshot, offset, entries);
 }
 
-struct boot_framebuffer {
-    uint64_t address;
-    uint64_t width;
-    uint64_t height;
-    uint64_t pitch;
-    uint16_t bpp;
-    uint8_t memory_model;
-    uint8_t green_mask_size;
-    uint8_t green_mask_shift;
-};
+/* The LimineFramebufferPrefix in main.plum reads the pinned x86-64 layout. */
+_Static_assert(sizeof(void *) == 8 && offsetof(struct limine_framebuffer, address) == 0 &&
+               offsetof(struct limine_framebuffer, width) == 8 &&
+               offsetof(struct limine_framebuffer, height) == 16 &&
+               offsetof(struct limine_framebuffer, pitch) == 24 &&
+               offsetof(struct limine_framebuffer, bpp) == 32 &&
+               offsetof(struct limine_framebuffer, memory_model) == 34 &&
+               offsetof(struct limine_framebuffer, green_mask_size) == 37 &&
+               offsetof(struct limine_framebuffer, green_mask_shift) == 38,
+               "Limine framebuffer prefix layout");
 
-_Static_assert(sizeof(struct boot_framebuffer) == 40, "BootFramebuffer size");
-_Static_assert(offsetof(struct boot_framebuffer, bpp) == 32, "BootFramebuffer bpp offset");
-_Static_assert(offsetof(struct boot_framebuffer, green_mask_shift) == 36,
-               "BootFramebuffer green shift offset");
-
-const struct boot_framebuffer *plum_boot_framebuffer(void) {
+const uint8_t *plum_boot_framebuffer(void) {
     const struct limine_framebuffer_response *response = framebuffer_request.response;
     if (!response || !response->framebuffer_count || !response->framebuffers) return NULL;
-
-    const struct limine_framebuffer *framebuffer = response->framebuffers[0];
-    if (!framebuffer) return NULL;
-
-    // Limine supplies an already-mapped virtual address for the pixels.
-    static struct boot_framebuffer descriptor;
-    descriptor = (struct boot_framebuffer){
-        .address = (uintptr_t)framebuffer->address,
-        .width = framebuffer->width,
-        .height = framebuffer->height,
-        .pitch = framebuffer->pitch,
-        .bpp = framebuffer->bpp,
-        .memory_model = framebuffer->memory_model,
-        .green_mask_size = framebuffer->green_mask_size,
-        .green_mask_shift = framebuffer->green_mask_shift
-    };
-    return &descriptor;
+    return (const uint8_t *)response->framebuffers[0];
 }
 
 #define BOOT_FAIL(message) plum_kernel_panic((const uint8_t *)(message), sizeof(message) - 1)

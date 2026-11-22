@@ -3,13 +3,16 @@ extern "C" struct BootSnapshot {
     memory_map_entries: U64,
 }
 
-extern "C" struct BootFramebuffer {
-    address: U64,
+// Read the needed prefix of Limine's x86-64 framebuffer record.
+extern "C" struct LimineFramebufferPrefix {
+    address_bits: U64,
     width: U64,
     height: U64,
     pitch: U64,
     bpp: U16,
     memory_model: U8,
+    red_mask_size: U8,
+    red_mask_shift: U8,
     green_mask_size: U8,
     green_mask_shift: U8,
 }
@@ -20,7 +23,7 @@ extern "C" {
     fn plum_x86_interrupts_enabled() -> Bool;
     fn plum_x86_halt() -> Unit;
     fn plum_boot_check_snapshot() -> Bool;
-    fn plum_boot_framebuffer() -> RawPtr[BootFramebuffer];
+    fn plum_boot_framebuffer() -> RawPtr[U8];
 }
 
 extern "C" let boot_snapshot_matches
@@ -107,13 +110,16 @@ let framebuffer_extent_is_valid (address: U64) (width: U64) (height: U64) (pitch
 }
 
 let draw_boot_screen (): Unit = unsafe {
-    let framebuffer = plum_boot_framebuffer();
-    if !framebuffer.is_null() {
+    let framebuffer_bytes = plum_boot_framebuffer();
+    if !framebuffer_bytes.is_null() {
+        let framebuffer = RawPtr.from_address[LimineFramebufferPrefix](
+            framebuffer_bytes.to_address()
+        );
         let x = 48;
         let y = 32;
         let rectangle_width = 160;
         let rectangle_height = 80;
-        let address = framebuffer.field_ptr("address").load();
+        let address = framebuffer.field_ptr("address_bits").load();
         let width = framebuffer.field_ptr("width").load();
         let height = framebuffer.field_ptr("height").load();
         let pitch = framebuffer.field_ptr("pitch").load();
