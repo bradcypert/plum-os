@@ -117,16 +117,16 @@ release. These are tested versions, not minimum version claims.
 | File | Responsibility |
 | --- | --- |
 | `boot/start.S` | Disable maskable interrupts, clear DF, select a private 64 KiB aligned BSS stack, initialize x87/SSE and MXCSR, call the C adapter with System V alignment |
-| `boot/adapter.c` | Negotiate Limine base revision 3; require HHDM, a nonempty memory map and four-level paging; retain borrowed boot data; initialize hooks before the generated entry |
+| `boot/adapter.c` | Negotiate Limine base revision 3, check required responses and four-level paging, initialize hooks, and expose borrowed boot data |
 | `boot/kernel.ld` | Higher-half ELF64 ET_EXEC at `0xffffffff80000000`, `_start` entry, page-aligned RX/R/RW regions, writable retained request records, mapped BSS and debug sections |
 | `boot/hardware.c` | C ABI serial write, interrupt disable/status and non-returning halt helpers |
-| `main.plum` | Check interrupts remain disabled, verify the boot snapshot round trip, emit the serial marker, halt |
+| `main.plum` | Check interrupts, validate the memory map, verify the boot snapshot round trip, draw the framebuffer label, write the serial marker, and halt |
 
-The adapter retains the HHDM offset returned by Limine and the borrowed memory
-map. It does not guess address offsets, reclaim boot memory, change CR3/GDT,
-start secondary CPUs, or enable interrupts. Limine zero-fills BSS. Failures use
-`plum_kernel_panic` before heap initialization, sharing the reference UART
-initializer so later initialization cannot clear pending adapter output.
+Limine zero-fills BSS and supplies the HHDM offset and memory map. The adapter
+exposes the map response as borrowed bytes. Plum walks its table of pointers and
+checks that the map is nonempty and each physical range fits in 64 bits. The
+bootloader memory stays reserved. Early failures use `plum_kernel_panic` before
+heap initialization through the shared UART initializer.
 
 During `main`, `plum_boot_check_snapshot` copies the HHDM offset and memory-map
 entry count into a C stack record. It calls the Plum export

@@ -17,12 +17,25 @@ extern "C" struct LimineFramebufferPrefix {
     green_mask_shift: U8,
 }
 
+extern "C" struct LimineMemoryMapResponse {
+    revision: U64,
+    entry_count: U64,
+    entries_address: U64,
+}
+
+extern "C" struct LimineMemoryMapEntry {
+    base: U64,
+    length: U64,
+    kind: U64,
+}
+
 extern "C" {
     fn plum_x86_serial_write(bytes: CStr, length: Int) -> Unit;
     fn plum_x86_interrupts_disable() -> Unit;
     fn plum_x86_interrupts_enabled() -> Bool;
     fn plum_x86_halt() -> Unit;
     fn plum_boot_check_snapshot() -> Bool;
+    fn plum_boot_memory_map() -> RawPtr[U8];
     fn plum_boot_framebuffer() -> RawPtr[U8];
 }
 
@@ -33,6 +46,37 @@ extern "C" let boot_snapshot_matches
 = unsafe {
     snapshot.field_ptr("hhdm_offset").load() == hhdm_offset
         && snapshot.field_ptr("memory_map_entries").load() == memory_map_entries
+}
+
+let max_offset: U64 = 9223372036854775807
+
+let max_address: U64 = 18446744073709551615
+
+let validate_boot_memory_map (): Unit = unsafe {
+    // The adapter checks that Limine supplied this response before starting Plum.
+    let response = RawPtr.from_address[LimineMemoryMapResponse](
+        plum_boot_memory_map().to_address()
+    );
+    let count = response.field_ptr("entry_count").load();
+    let entries_address = response.field_ptr("entries_address").load();
+    if count == 0 || entries_address == 0 { panic_raw("empty Limine memory map") };
+    // Each table slot holds one 8-byte pointer on x86-64.
+    if entries_address % 8 != 0 || count > max_offset / 8
+        || count * 8 > max_address - entries_address {
+            panic_raw("invalid Limine memory map")
+        };
+
+    let entries = RawPtr.from_address[U64](entries_address);
+    for index in 0..I64.truncating_from(count) {
+        let address = entries.offset_bytes(index * 8).load();
+        if address == 0 || address % 8 != 0 || address > max_address - 24 {
+            panic_raw("invalid Limine memory region")
+        };
+        let entry = RawPtr.from_address[LimineMemoryMapEntry](address);
+        let base = entry.field_ptr("base").load();
+        let length = entry.field_ptr("length").load();
+        if length > max_address - base { panic_raw("invalid Limine memory region") };
+    }
 }
 
 let glyph_width: Int = 5
@@ -100,8 +144,6 @@ let draw_boot_label
 }
 
 let framebuffer_extent_is_valid (address: U64) (width: U64) (height: U64) (pitch: U64): Bool = {
-    let max_offset: U64 = 9223372036854775807;
-    let max_address: U64 = 18446744073709551615;
     // Check the row size before division and bound the span before multiplication.
     address != 0 && address % 4 == 0 && pitch != 0 && pitch % 4 == 0
         && width != 0 && width <= pitch / 4
@@ -154,6 +196,7 @@ let draw_boot_screen (): Unit = unsafe {
 let main (): Unit = unsafe {
     plum_x86_interrupts_disable();
     if plum_x86_interrupts_enabled() { panic_raw("interrupts must remain disabled") };
+    validate_boot_memory_map();
     if !plum_boot_check_snapshot() { panic_raw("boot snapshot round trip failed") };
     draw_boot_screen();
     let marker = "PLUM_KERNEL_OK\n";
