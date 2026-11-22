@@ -71,10 +71,11 @@ repository; compiler-only code-generation audits remain in Plum.
 ## Draw on the boot framebuffer
 
 Limine fills the framebuffer request in the C adapter before starting the
-kernel. The adapter keeps a small descriptor for a supported 32-bit RGB
-framebuffer. It records the already-mapped pixel address, dimensions, row
-stride in bytes, and the packed green color. Plum reads that descriptor
-through `RawPtr[BootFramebuffer]` and paints a 160×80 rectangle at (48, 32).
+kernel. The adapter passes a pointer to Limine's framebuffer record. Plum reads
+its x86-64 layout directly to get the mapped pixel address, dimensions, row
+stride in bytes, and color format. It checks for supported 32-bit RGB, validates
+the buffer extent, and packs green using the reported channel shift before
+painting a 160×80 rectangle at (48, 32).
 It centers the text PLUM OS inside the rectangle using a small bitmap font.
 Each letter has seven rows of five bits. A set bit paints a 3×3 black square
 and a clear bit leaves the background visible.
