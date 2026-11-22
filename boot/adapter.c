@@ -55,46 +55,40 @@ int plum_boot_check_snapshot(void) {
 
 struct boot_framebuffer {
     uint64_t address;
-    int64_t width;
-    int64_t height;
-    int64_t pitch;
-    uint32_t green;
+    uint64_t width;
+    uint64_t height;
+    uint64_t pitch;
+    uint16_t bpp;
+    uint8_t memory_model;
+    uint8_t green_mask_size;
+    uint8_t green_mask_shift;
 };
 
 _Static_assert(sizeof(struct boot_framebuffer) == 40, "BootFramebuffer size");
-_Static_assert(offsetof(struct boot_framebuffer, green) == 32, "BootFramebuffer green offset");
-
-static struct boot_framebuffer boot_framebuffer;
-
-static void capture_framebuffer(void) {
-    const struct limine_framebuffer_response *response = framebuffer_request.response;
-    if (!response || !response->framebuffer_count || !response->framebuffers) return;
-
-    const struct limine_framebuffer *framebuffer = response->framebuffers[0];
-    if (!framebuffer || !framebuffer->address || framebuffer->bpp != 32 ||
-        framebuffer->memory_model != LIMINE_FRAMEBUFFER_RGB ||
-        framebuffer->green_mask_size != 8 || framebuffer->green_mask_shift > 24) return;
-
-    uintptr_t address = (uintptr_t)framebuffer->address;
-    uint64_t pitch = framebuffer->pitch;
-    if (!framebuffer->width || !framebuffer->height || !pitch ||
-        address % _Alignof(uint32_t) || pitch % sizeof(uint32_t) ||
-        framebuffer->width > pitch / sizeof(uint32_t) ||
-        framebuffer->height > INT64_MAX / pitch ||
-        framebuffer->height * pitch > UINTPTR_MAX - address) return;
-
-    // Limine already supplies a mapped virtual address for the pixels.
-    boot_framebuffer = (struct boot_framebuffer){
-        .address = address,
-        .width = (int64_t)framebuffer->width,
-        .height = (int64_t)framebuffer->height,
-        .pitch = (int64_t)pitch,
-        .green = UINT32_C(255) << framebuffer->green_mask_shift
-    };
-}
+_Static_assert(offsetof(struct boot_framebuffer, bpp) == 32, "BootFramebuffer bpp offset");
+_Static_assert(offsetof(struct boot_framebuffer, green_mask_shift) == 36,
+               "BootFramebuffer green shift offset");
 
 const struct boot_framebuffer *plum_boot_framebuffer(void) {
-    return boot_framebuffer.address ? &boot_framebuffer : NULL;
+    const struct limine_framebuffer_response *response = framebuffer_request.response;
+    if (!response || !response->framebuffer_count || !response->framebuffers) return NULL;
+
+    const struct limine_framebuffer *framebuffer = response->framebuffers[0];
+    if (!framebuffer) return NULL;
+
+    // Limine supplies an already-mapped virtual address for the pixels.
+    static struct boot_framebuffer descriptor;
+    descriptor = (struct boot_framebuffer){
+        .address = (uintptr_t)framebuffer->address,
+        .width = framebuffer->width,
+        .height = framebuffer->height,
+        .pitch = framebuffer->pitch,
+        .bpp = framebuffer->bpp,
+        .memory_model = framebuffer->memory_model,
+        .green_mask_size = framebuffer->green_mask_size,
+        .green_mask_shift = framebuffer->green_mask_shift
+    };
+    return &descriptor;
 }
 
 #define BOOT_FAIL(message) plum_kernel_panic((const uint8_t *)(message), sizeof(message) - 1)
@@ -116,7 +110,6 @@ _Noreturn void plum_boot_enter(void) {
     }
     plum_boot_hhdm_offset = hhdm->offset;
     plum_boot_memory_map = map;
-    capture_framebuffer();
     /* Any early failure uses the same serial initializer; never reset COM1. */
     plum_kernel_runtime_init();
     plum_kernel_start();
